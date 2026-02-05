@@ -83,13 +83,16 @@ class DataAnalyzer:
     def get_attribute_values(
         self,
         attribute: str,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        explode_list: bool = False
     ) -> Dict[Any, int]:
         """Get all unique values for an attribute with counts.
 
         Args:
             attribute: Attribute name
             limit: Maximum number of values to return
+            explode_list: If True and the attribute value is a list, count each
+                element as a separate value (useful for tags/refs).
 
         Returns:
             Dictionary mapping values to count of notes with that value
@@ -97,19 +100,71 @@ class DataAnalyzer:
         value_counts = defaultdict(int)
 
         for frontmatter in self.data.values():
-            if attribute in frontmatter:
-                value = frontmatter[attribute]
-                # Normalize value for counting (convert lists to tuples for hashability)
-                normalized = FrontmatterParser.normalize_value(value)
-                value_counts[normalized] += 1
+            if attribute not in frontmatter:
+                continue
+
+            value = frontmatter[attribute]
+
+            if explode_list and isinstance(value, list):
+                for item in value:
+                    # Skip empty / non-countable tokens
+                    if item is None:
+                        continue
+                    if item == "":
+                        continue
+                    if isinstance(item, list) and len(item) == 0:
+                        continue
+                    if isinstance(item, dict) and len(item) == 0:
+                        continue
+
+                    normalized_item = FrontmatterParser.normalize_value(item)
+
+                    # If normalization yields an empty tuple (e.g., []), ignore
+                    if normalized_item == ():
+                        continue
+
+                    value_counts[normalized_item] += 1
+                continue
+
+            # Default behavior: normalize the whole value for counting
+            normalized = FrontmatterParser.normalize_value(value)
+            value_counts[normalized] += 1
 
         # Sort by count (descending) and apply limit
         sorted_values = sorted(value_counts.items(), key=lambda x: x[1], reverse=True)
         if limit:
             sorted_values = sorted_values[:limit]
 
-        # Denormalize values for output
-        return {FrontmatterParser.denormalize_value(k): v for k, v in sorted_values}
+        # IMPORTANT: keep normalized (hashable) values as keys.
+        # Denormalizing would turn tuples back into lists/dicts, which are unhashable
+        # and crash when used as dict keys (e.g., for `tags`/`refs`).
+        return {k: v for k, v in sorted_values}
+
+    def get_child_count(
+        self,
+        hub_value: Any,
+        parent_attribute: str = "parent",
+        refs_attribute: str = "refs"
+    ) -> int:
+        """Compute combined child count for a single hub.
+
+        childCount(hub) = parentCount(hub) + refsCount(hub)
+
+        - parentCount(hub): number of notes with `parent: hub_value`
+        - refsCount(hub): number of notes where `refs` (YAML list) contains hub_value
+
+        Note: `hub_value` must match the normalized form used by the analyzer.
+        In practice this is usually a string like `[[Hub]]`.
+
+        Returns:
+            Total child count (int)
+        """
+        parent_counts = self.get_attribute_values(parent_attribute, limit=None, explode_list=False)
+        refs_counts = self.get_attribute_values(refs_attribute, limit=None, explode_list=True)
+
+        pc = int(parent_counts.get(hub_value, 0))
+        rc = int(refs_counts.get(hub_value, 0))
+        return pc + rc
 
     def get_attribute_values_with_notes(
         self,
@@ -141,13 +196,12 @@ class DataAnalyzer:
         if limit_values:
             sorted_values = sorted_values[:limit_values]
 
-        # Denormalize and apply note limit
+        # Keep normalized (hashable) values as keys.
         result = {}
         for normalized_value, notes in sorted_values:
-            denormalized_value = FrontmatterParser.denormalize_value(normalized_value)
             if limit_notes:
                 notes = notes[:limit_notes]
-            result[denormalized_value] = (len(value_notes[normalized_value]), notes)
+            result[normalized_value] = (len(value_notes[normalized_value]), notes)
 
         return result
 

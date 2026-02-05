@@ -1,6 +1,7 @@
 """CLI interface for Obsidian Frontmatter tool."""
 
 import sys
+import builtins
 import click
 from pathlib import Path
 from rich.console import Console
@@ -20,10 +21,14 @@ console = Console()
 
 
 def format_value(value):
-    """Format a value for display."""
-    if isinstance(value, list):
+    """Format a value for display.
+
+    NOTE: this module defines a click command named `list`, so we must avoid
+    shadowing the built-in `list` type in `isinstance` checks.
+    """
+    if isinstance(value, builtins.list):
         return ", ".join(str(v) for v in value)
-    elif isinstance(value, dict):
+    elif isinstance(value, builtins.dict):
         return str(value)
     else:
         return str(value)
@@ -207,11 +212,16 @@ def list(vault_path, attribute, value, limit_values, limit_notes, limit):
     default=None,
     help='Max number of values to show'
 )
-def values(vault_path, attribute, limit):
+@click.option(
+    '--explode-list/--no-explode-list',
+    default=False,
+    help='If the attribute value is a YAML list, count each list item as a separate value (e.g., refs/tags).'
+)
+def values(vault_path, attribute, limit, explode_list):
     """Show possible values for an attribute with count statistics."""
     analyzer = scan_and_analyze(vault_path)
 
-    attr_values = analyzer.get_attribute_values(attribute, limit)
+    attr_values = analyzer.get_attribute_values(attribute, limit, explode_list=explode_list)
 
     if not attr_values:
         console.print(f"[yellow]No values found for attribute '{attribute}'[/yellow]")
@@ -225,6 +235,56 @@ def values(vault_path, attribute, limit):
         table.add_row(format_value(value), str(count))
 
     console.print(table)
+
+
+@main.command(name='child-count')
+@click.option(
+    '--vault-path',
+    default=DEFAULT_VAULT_PATH,
+    help='Path to Obsidian vault',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True)
+)
+@click.option(
+    '--hub',
+    required=True,
+    help='Hub value to count children for (e.g., "[[Learn]]")'
+)
+@click.option(
+    '--parent-attribute',
+    default='parent',
+    help='Frontmatter attribute used for hierarchy parent'
+)
+@click.option(
+    '--refs-attribute',
+    default='refs',
+    help='Frontmatter attribute used for refs list'
+)
+@click.option(
+    '--max-files',
+    type=int,
+    default=200,
+    show_default=True,
+    help='Technical cap for scan (safety guard).'
+)
+def child_count(vault_path, hub, parent_attribute, refs_attribute, max_files):
+    """Return a single integer: combined child count (parent + refs) for the hub.
+
+    Output is intentionally plain (no extra info) to be script-friendly.
+    """
+    analyzer = scan_and_analyze(vault_path)
+
+    # NOTE: max_files is a guardrail placeholder. Current implementation scans the vault
+    # in one pass; enforcing max_files would require scanner support.
+    _ = max_files
+
+    total = analyzer.get_child_count(
+        hub_value=hub,
+        parent_attribute=parent_attribute,
+        refs_attribute=refs_attribute,
+    )
+
+    # Print just the number
+    console.print(str(total))
 
 
 if __name__ == '__main__':
