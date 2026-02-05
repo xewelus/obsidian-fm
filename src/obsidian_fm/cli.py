@@ -16,7 +16,9 @@ from .analyzer import DataAnalyzer
 
 
 # Default vault path
-DEFAULT_VAULT_PATH = "~/Documents/Obsidian"
+# Keep it generic (no personal folder names). If you want a different default,
+# pass --vault-path explicitly.
+DEFAULT_VAULT_PATH = str(Path.home() / "Documents" / "Obsidian")
 
 console = Console()
 
