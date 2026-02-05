@@ -1,0 +1,3 @@
+# Replace personal-ish default paths with a generic placeholder
+C:/Users/User/Documents/Obsidian/Home/Home/==>~/Documents/Obsidian
+C:/Users/User/Documents/Obsidian/Home/Home==>~/Documents/Obsidian
