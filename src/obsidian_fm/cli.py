@@ -317,19 +317,45 @@ def child_count(vault_path, hub, parent_attribute, refs_attribute, max_files):
     help='Frontmatter attribute used for refs list'
 )
 @click.option(
+    '--mode',
+    type=click.Choice(['total', 'breakdown'], case_sensitive=False),
+    default='total',
+    show_default=True,
+    help='Output shape: total (hub->int) or breakdown (hub->{parent,refs,total})'
+)
+@click.option(
     '--format',
     type=click.Choice(['json'], case_sensitive=False),
     default='json',
     help='Output format (currently only json)'
 )
-def child_counts(vault_path, parent_attribute, refs_attribute, format):
-    """Return combined child counts (parent + refs) for all hubs in one scan.
+def child_counts(vault_path, parent_attribute, refs_attribute, mode, format):
+    """Return child counts for all hubs in one scan.
 
-    Output is JSON mapping hub_value -> totalCount.
+    Modes:
+      - total: JSON mapping hub_value -> totalCount
+      - breakdown: JSON mapping hub_value -> {parent, refs, total}
     """
     _ = format
 
     analyzer = scan_and_analyze(vault_path, show_progress=False)
+
+    if mode.lower() == 'breakdown':
+        breakdown = analyzer.get_child_counts_breakdown(
+            parent_attribute=parent_attribute,
+            refs_attribute=refs_attribute,
+        )
+        breakdown_str_keys = {
+            format_value(hub): {
+                'parent': int(parts['parent']),
+                'refs': int(parts['refs']),
+                'total': int(parts['total']),
+            }
+            for hub, parts in breakdown.items()
+        }
+        click.echo(json.dumps(breakdown_str_keys, ensure_ascii=False))
+        return
+
     totals = analyzer.get_child_counts_total(
         parent_attribute=parent_attribute,
         refs_attribute=refs_attribute,

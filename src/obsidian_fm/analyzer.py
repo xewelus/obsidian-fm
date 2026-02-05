@@ -178,17 +178,49 @@ class DataAnalyzer:
 
         Keys are in the analyzer's normalized form (typically strings like '[[Hub]]').
         """
-        parent_counts = self.get_attribute_values(parent_attribute, limit=None, explode_list=False)
-        refs_counts = self.get_attribute_values(refs_attribute, limit=None, explode_list=True)
+        breakdown = self.get_child_counts_breakdown(
+            parent_attribute=parent_attribute,
+            refs_attribute=refs_attribute,
+        )
 
-        hubs = set(parent_counts.keys()) | set(refs_counts.keys())
-        totals: Dict[Any, int] = {}
-        for hub in hubs:
-            totals[hub] = int(parent_counts.get(hub, 0)) + int(refs_counts.get(hub, 0))
+        totals: Dict[Any, int] = {
+            hub: int(parts["total"]) for hub, parts in breakdown.items()
+        }
 
         # Sort by total desc for stable CLI output
         totals_sorted = dict(sorted(totals.items(), key=lambda kv: kv[1], reverse=True))
         return totals_sorted
+
+    def get_child_counts_breakdown(
+        self,
+        parent_attribute: str = "parent",
+        refs_attribute: str = "refs"
+    ) -> Dict[Any, Dict[str, int]]:
+        """Compute child count breakdown (parent + refs + total) for all hubs.
+
+        Returns a dict:
+          hub_value -> {"parent": n, "refs": m, "total": k}
+
+        Keys are in the analyzer's normalized form.
+        """
+        parent_counts = self.get_attribute_values(parent_attribute, limit=None, explode_list=False)
+        refs_counts = self.get_attribute_values(refs_attribute, limit=None, explode_list=True)
+
+        hubs = set(parent_counts.keys()) | set(refs_counts.keys())
+        breakdown: Dict[Any, Dict[str, int]] = {}
+        for hub in hubs:
+            pc = int(parent_counts.get(hub, 0))
+            rc = int(refs_counts.get(hub, 0))
+            breakdown[hub] = {
+                "parent": pc,
+                "refs": rc,
+                "total": pc + rc,
+            }
+
+        breakdown_sorted = dict(
+            sorted(breakdown.items(), key=lambda kv: kv[1]["total"], reverse=True)
+        )
+        return breakdown_sorted
 
     def get_attribute_values_with_notes(
         self,

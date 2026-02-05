@@ -138,6 +138,26 @@ def test_get_child_counts_total():
     assert '[[Missing]]' not in totals
 
 
+def test_get_child_counts_breakdown():
+    """Test batch breakdown (parent/refs/total) for all hubs."""
+    analyzer = DataAnalyzer()
+
+    analyzer.add_file(Path("c1.md"), {'parent': '[[Hub]]'})
+    analyzer.add_file(Path("c2.md"), {'parent': '[[Hub]]'})
+    analyzer.add_file(Path("r1.md"), {'refs': ['[[Hub]]', '[[Other]]']})
+    analyzer.add_file(Path("r2.md"), {'refs': ['[[Hub]]']})
+
+    breakdown = analyzer.get_child_counts_breakdown()
+
+    assert breakdown['[[Hub]]']['parent'] == 2
+    assert breakdown['[[Hub]]']['refs'] == 2
+    assert breakdown['[[Hub]]']['total'] == 4
+
+    assert breakdown['[[Other]]']['parent'] == 0
+    assert breakdown['[[Other]]']['refs'] == 1
+    assert breakdown['[[Other]]']['total'] == 1
+
+
 def test_get_total_files():
     """Test getting total file count."""
     analyzer = DataAnalyzer()
