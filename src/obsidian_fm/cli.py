@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 import yaml
+import json
 
 from .scanner import VaultScanner
 from .parser import FrontmatterParser
@@ -34,11 +35,12 @@ def format_value(value):
         return str(value)
 
 
-def scan_and_analyze(vault_path: str) -> DataAnalyzer:
+def scan_and_analyze(vault_path: str, show_progress: bool = True) -> DataAnalyzer:
     """Scan vault and analyze frontmatter.
 
     Args:
         vault_path: Path to the vault
+        show_progress: If True, show rich progress/spinner output.
 
     Returns:
         Populated DataAnalyzer instance
@@ -52,18 +54,26 @@ def scan_and_analyze(vault_path: str) -> DataAnalyzer:
     parser = FrontmatterParser()
     analyzer = DataAnalyzer()
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Scanning vault...", total=None)
+    if show_progress:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Scanning vault...", total=None)
 
-        for file_path in scanner.scan():
-            frontmatter = parser.parse_file(file_path)
-            analyzer.add_file(file_path, frontmatter)
+            for file_path in scanner.scan():
+                frontmatter = parser.parse_file(file_path)
+                analyzer.add_file(file_path, frontmatter)
 
-        progress.update(task, description="Scan complete!")
+            progress.update(task, description="Scan complete!")
+
+        return analyzer
+
+    # Script-friendly mode: no spinner/progress output
+    for file_path in scanner.scan():
+        frontmatter = parser.parse_file(file_path)
+        analyzer.add_file(file_path, frontmatter)
 
     return analyzer
 
@@ -90,7 +100,7 @@ def main():
 )
 def stats(vault_path, format):
     """Show statistics for all frontmatter attributes."""
-    analyzer = scan_and_analyze(vault_path)
+    analyzer = scan_and_analyze(vault_path, show_progress=True)
 
     attr_stats = analyzer.get_attribute_stats()
 
@@ -160,7 +170,7 @@ def stats(vault_path, format):
 )
 def list(vault_path, attribute, value, limit_values, limit_notes, limit):
     """List notes and values for a specific attribute."""
-    analyzer = scan_and_analyze(vault_path)
+    analyzer = scan_and_analyze(vault_path, show_progress=True)
 
     if value is not None:
         # List notes with specific attribute=value
@@ -219,7 +229,7 @@ def list(vault_path, attribute, value, limit_values, limit_notes, limit):
 )
 def values(vault_path, attribute, limit, explode_list):
     """Show possible values for an attribute with count statistics."""
-    analyzer = scan_and_analyze(vault_path)
+    analyzer = scan_and_analyze(vault_path, show_progress=True)
 
     attr_values = analyzer.get_attribute_values(attribute, limit, explode_list=explode_list)
 
@@ -271,7 +281,7 @@ def child_count(vault_path, hub, parent_attribute, refs_attribute, max_files):
 
     Output is intentionally plain (no extra info) to be script-friendly.
     """
-    analyzer = scan_and_analyze(vault_path)
+    analyzer = scan_and_analyze(vault_path, show_progress=False)
 
     # NOTE: max_files is a guardrail placeholder. Current implementation scans the vault
     # in one pass; enforcing max_files would require scanner support.
@@ -283,8 +293,49 @@ def child_count(vault_path, hub, parent_attribute, refs_attribute, max_files):
         refs_attribute=refs_attribute,
     )
 
-    # Print just the number
-    console.print(str(total))
+    # Print just the number (no rich formatting)
+    click.echo(str(total))
+
+
+@main.command(name='child-counts')
+@click.option(
+    '--vault-path',
+    default=DEFAULT_VAULT_PATH,
+    help='Path to Obsidian vault',
+    type=click.Path(exists=True, file_okay=False, dir_okay=True)
+)
+@click.option(
+    '--parent-attribute',
+    default='parent',
+    help='Frontmatter attribute used for hierarchy parent'
+)
+@click.option(
+    '--refs-attribute',
+    default='refs',
+    help='Frontmatter attribute used for refs list'
+)
+@click.option(
+    '--format',
+    type=click.Choice(['json'], case_sensitive=False),
+    default='json',
+    help='Output format (currently only json)'
+)
+def child_counts(vault_path, parent_attribute, refs_attribute, format):
+    """Return combined child counts (parent + refs) for all hubs in one scan.
+
+    Output is JSON mapping hub_value -> totalCount.
+    """
+    _ = format
+
+    analyzer = scan_and_analyze(vault_path, show_progress=False)
+    totals = analyzer.get_child_counts_total(
+        parent_attribute=parent_attribute,
+        refs_attribute=refs_attribute,
+    )
+
+    # JSON: ensure keys are strings (normalized values may be tuples)
+    totals_str_keys = {format_value(k): int(v) for k, v in totals.items()}
+    click.echo(json.dumps(totals_str_keys, ensure_ascii=False))
 
 
 if __name__ == '__main__':

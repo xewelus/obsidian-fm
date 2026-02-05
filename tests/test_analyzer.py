@@ -122,6 +122,22 @@ def test_get_child_count_combined():
     assert analyzer.get_child_count('[[Missing]]') == 0
 
 
+def test_get_child_counts_total():
+    """Test batch child totals for all hubs."""
+    analyzer = DataAnalyzer()
+
+    analyzer.add_file(Path("c1.md"), {'parent': '[[Hub]]'})
+    analyzer.add_file(Path("c2.md"), {'parent': '[[Hub]]'})
+    analyzer.add_file(Path("r1.md"), {'refs': ['[[Hub]]', '[[Other]]']})
+    analyzer.add_file(Path("r2.md"), {'refs': ['[[Hub]]']})
+
+    totals = analyzer.get_child_counts_total()
+
+    assert totals['[[Hub]]'] == 4
+    assert totals['[[Other]]'] == 1
+    assert '[[Missing]]' not in totals
+
+
 def test_get_total_files():
     """Test getting total file count."""
     analyzer = DataAnalyzer()

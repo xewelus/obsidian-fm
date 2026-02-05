@@ -166,6 +166,30 @@ class DataAnalyzer:
         rc = int(refs_counts.get(hub_value, 0))
         return pc + rc
 
+    def get_child_counts_total(
+        self,
+        parent_attribute: str = "parent",
+        refs_attribute: str = "refs"
+    ) -> Dict[Any, int]:
+        """Compute combined child counts for all hubs in one pass.
+
+        Returns a dict:
+          hub_value -> (parentCount(hub) + refsCount(hub))
+
+        Keys are in the analyzer's normalized form (typically strings like '[[Hub]]').
+        """
+        parent_counts = self.get_attribute_values(parent_attribute, limit=None, explode_list=False)
+        refs_counts = self.get_attribute_values(refs_attribute, limit=None, explode_list=True)
+
+        hubs = set(parent_counts.keys()) | set(refs_counts.keys())
+        totals: Dict[Any, int] = {}
+        for hub in hubs:
+            totals[hub] = int(parent_counts.get(hub, 0)) + int(refs_counts.get(hub, 0))
+
+        # Sort by total desc for stable CLI output
+        totals_sorted = dict(sorted(totals.items(), key=lambda kv: kv[1], reverse=True))
+        return totals_sorted
+
     def get_attribute_values_with_notes(
         self,
         attribute: str,
