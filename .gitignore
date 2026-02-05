@@ -1,0 +1,9 @@
+# Keep local-only / generated stuff out of git
+.claude/
+ai/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
