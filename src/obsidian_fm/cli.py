@@ -175,14 +175,38 @@ def list(vault_path, attribute, value, limit_values, limit_notes, limit):
     analyzer = scan_and_analyze(vault_path, show_progress=True)
 
     if value is not None:
-        # List notes with specific attribute=value
-        files = analyzer.get_files_with_attribute(attribute, value, limit)
+        # List notes with specific attribute=value.
+        #
+        # IMPORTANT: "Total" should mean total matching notes in the vault, not
+        # "shown" after applying --limit.
+        #
+        # Performance note: we should NOT re-scan the vault. `analyzer` already
+        # holds the parsed frontmatter in memory. To avoid even iterating twice,
+        # we count matches and collect up to `--limit` in a single pass.
 
-        if not files:
+        # Treat --limit 0 as "no limit" (Click still passes 0 as an int)
+        display_limit = None if limit in (None, 0) else int(limit)
+
+        total = 0
+        files = []
+
+        for file_path, frontmatter in analyzer.data.items():
+            if attribute not in frontmatter:
+                continue
+
+            fm_value = frontmatter[attribute]
+            if not analyzer._values_match(fm_value, value):
+                continue
+
+            total += 1
+            if display_limit is None or len(files) < display_limit:
+                files.append(file_path)
+
+        if total == 0:
             console.print(f"[yellow]No notes found with {attribute}={value}[/yellow]")
             return
 
-        console.print(f"\n[bold]Notes with {attribute}={value}[/bold] (Total: {len(files)})\n")
+        console.print(f"\n[bold]Notes with {attribute}={value}[/bold] (Total: {total})\n")
         for file_path in files:
             console.print(f"  - {file_path.relative_to(vault_path)}")
 
